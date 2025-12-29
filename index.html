@@ -15,7 +15,7 @@
         #chatMessages { height: 80px; overflow-y: auto; margin-bottom: 10px; font-size: 14px; }
         input { width: 70%; padding: 8px; border: none; border-radius: 5px; }
         button { padding: 8px 12px; background: #00ff00; border: none; border-radius: 5px; color: black; font-weight: bold; }
-        #orientation-message { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: white; display: flex; align-items: center; justify-content: center; flex-direction: column; font-size: 24px; z-index: 100; display: none; }
+        #orientation-message { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: white; display: flex; align-items: center; justify-content: center; flex-direction: column; font-size: 24px; z-index: 100; }
     </style>
 </head>
 <body>
@@ -37,10 +37,9 @@
         tg.expand();
         tg.requestFullscreen();
 
-        // Проверка ориентации — только портрет
         const orientationMessage = document.getElementById('orientation-message');
         function checkOrientation() {
-            if (window.innerHeight > window.innerWidth) { // portrait
+            if (window.innerHeight > window.innerWidth) {
                 orientationMessage.style.display = 'none';
             } else {
                 orientationMessage.style.display = 'flex';
@@ -63,8 +62,8 @@
         };
 
         const game = new Phaser.Game(config);
-        let player, moneyBags, joystick, gasButton;
-        let cursors; // для ПК
+        let player, moneyBags, joystick, gasButton, cursors;
+        let gasPressed = false;
 
         function preload() {
             this.load.image('car', 'https://img.itch.zone/aW1nLzMxODEyMDUucG5n/315x250%23c/WAOu6X.png');
@@ -72,120 +71,46 @@
             this.load.image('road', 'https://img.craftpix.net/2024/10/Path-and-Road-Top-Down-Tileset-Pixel-Art.jpg');
             this.load.image('building1', 'https://i.ytimg.com/vi/lXvwpxS--3g/maxresdefault.jpg');
             this.load.image('moneybag', 'https://www.shutterstock.com/image-vector/money-bundle-pack-pixel-art-260nw-2220859721.jpg');
-
-            // Плагин джойстика
             this.load.plugin('rexvirtualjoystickplugin', 'https://cdn.jsdelivr.net/npm/phaser3-rex-plugins@1.1.82/dist/rexvirtualjoystickplugin.min.js', true);
         }
 
         function create() {
-            // Фон города
-            this.add.image(this.scale.width/2, this.scale.height/2, 'road').setScale(2).setDepth(-1);
+            this.add.image(this.scale.width / 2, this.scale.height / 2, 'road').setScale(2).setDepth(-1);
 
-            // Здания и полиция
-            this.add.image(this.scale.width/2 - 100, this.scale.height/2 - 200, 'building1').setScale(0.6);
-            this.add.image(this.scale.width/2 + 200, this.scale.height/2 + 100, 'building1').setScale(0.5);
-            this.add.image(this.scale.width/2, this.scale.height/2 + 300, 'police').setScale(0.3);
+            this.add.image(this.scale.width / 2 - 100, this.scale.height / 2 - 200, 'building1').setScale(0.6);
+            this.add.image(this.scale.width / 2 + 200, this.scale.height / 2 + 100, 'building1').setScale(0.5);
+            this.add.image(this.scale.width / 2, this.scale.height / 2 + 300, 'police').setScale(0.3);
 
-            // Машина игрока (крупнее для мобильных)
-            player = this.physics.add.sprite(this.scale.width/2, this.scale.height/2 + 200, 'car').setScale(0.6);
+            player = this.physics.add.sprite(this.scale.width / 2, this.scale.height / 2 + 200, 'car').setScale(0.6);
 
-            // Деньги
             moneyBags = this.physics.add.group();
-            for (let i = 0; i < 15; i++) { // больше денег
-                let x = Phaser.Math.Between(100, this.scale.width - 100);
-                let y = Phaser.Math.Between(100, this.scale.height - 200);
+            for (let i = 0; i < 15; i++) {
+                let x = Phaser.Math.Between(100, this.scale.width * 2 - 100);
+                let y = Phaser.Math.Between(100, this.scale.height * 2 - 200);
                 let bag = moneyBags.create(x, y, 'moneybag').setScale(0.3);
                 bag.setData('value', 100);
             }
             this.physics.add.overlap(player, moneyBags, collectMoney, null, this);
 
-            // Камера следует за игроком
             this.cameras.main.startFollow(player);
             this.cameras.main.setBounds(0, 0, this.scale.width * 2, this.scale.height * 2);
 
-            // Клавиатура для ПК
             cursors = this.input.keyboard.createCursorKeys();
 
-            // Сенсорное управление для телефона
-            if (tg.platform !== 'unknown' || 'ontouchstart' in window) {
-                // Джойстик слева
-                joystick = this.plugins.get('rexVirtualJoystick').add(this, {
+            // Сенсорное управление
+            if ('ontouchstart' in window || tg.platform !== 'unknown') {
+                joystick = this.plugins.get('rexvirtualjoystickplugin').add(this, {
                     x: 150,
                     y: this.scale.height - 150,
                     radius: 100,
-                    base: this.add.circle(150, this.scale.height - 150, 100, 0x888888, 0.3),
-                    thumb: this.add.circle(150, this.scale.height - 150, 50, 0xcccccc, 0.5),
+                    base: this.add.circle(150, this.scale.height - 150, 100, 0x888888, 0.3).setDepth(10),
+                    thumb: this.add.circle(150, this.scale.height - 150, 50, 0xcccccc, 0.5).setDepth(10),
                     dir: '8dir',
                     forceMin: 16
                 });
-                // Кнопка газа справа
-                gasButton = this.add.circle(this.scale.width - 150, this.scale.height - 150, 80, 0x00ff00, 0.5).setInteractive();
-                this.add.text(this.scale.width - 180, this.scale.height - 180, 'ГАЗ', {fontSize: '24px', color: '#000'}).setOrigin(0.5);
+
+                gasButton = this.add.circle(this.scale.width - 150, this.scale.height - 150, 80, 0x00ff00, 0.5).setInteractive().setDepth(10);
+                this.add.text(this.scale.width - 180, this.scale.height - 180, 'ГАЗ', { fontSize: '24px', color: '#000' }).setOrigin(0.5).setDepth(10);
+
                 gasButton.on('pointerdown', () => gasPressed = true);
-                gasButton.on('pointerup', () => gasPressed = false);
-                gasButton.on('pointerout', () => gasPressed = false);
-            }
-        }
-
-        let gasPressed = false;
-
-        function collectMoney(player, bag) {
-            bag.destroy();
-            money += 100;
-            document.getElementById('money').innerText = money;
-            tg.HapticFeedback.impactOccurred('light');
-            if (money >= 500 && !missionComplete) {
-                missionComplete = true;
-                tg.showAlert("🎉 Миссия выполнена! Ты босс района!");
-            }
-        }
-
-        function update() {
-            const speed = 10;
-            let vx = 0, vy = 0;
-
-            // ПК — клавиатура
-            if (cursors) {
-                if (cursors.left.isDown) player.angle -= 6;
-                if (cursors.right.isDown) player.angle += 6;
-                if (cursors.up.isDown) {
-                    this.physics.velocityFromAngle(player.angle, speed * 40, player.body.velocity);
-                } else if (cursors.down.isDown) {
-                    this.physics.velocityFromAngle(player.angle, -speed * 20, player.body.velocity);
-                } else {
-                    player.setVelocity(0);
-                }
-                return;
-            }
-
-            // Мобиль — джойстик
-            const joyCursors = joystick.createCursorKeys();
-            if (joyCursors.left.isDown) player.angle -= 6;
-            if (joyCursors.right.isDown) player.angle += 6;
-            if (joyCursors.up.isDown || gasPressed) {
-                this.physics.velocityFromAngle(player.angle, speed * 40, player.body.velocity);
-            } else if (joyCursors.down.isDown) {
-                this.physics.velocityFromAngle(player.angle, -speed * 20, player.body.velocity);
-            } else {
-                player.setVelocity(0);
-            }
-        }
-
-        function sendChat() {
-            const input = document.getElementById('chatInput');
-            const msg = input.value.trim();
-            if (msg) {
-                const chatDiv = document.getElementById('chatMessages');
-                const username = tg.initDataUnsafe.user?.first_name || "Игрок";
-                chatDiv.innerHTML += `<p><b>${username}:</b> ${msg}</p>`;
-                chatDiv.scrollTop = chatDiv.scrollHeight;
-                input.value = "";
-            }
-        }
-
-        document.getElementById('chatInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendChat();
-        });
-    </script>
-</body>
-</html>
+                gasButton.on('pointerup', () =>
